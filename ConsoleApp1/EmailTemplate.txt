@@ -1,0 +1,17 @@
+﻿Hi,
+
+Following is the analysis pulled from google:
+
+Currency Pair: {0}
+<br>
+Date: {1}
+<br>
+News:
+<br><br>
+{2}
+
+Result:
+{3}
+
+
+

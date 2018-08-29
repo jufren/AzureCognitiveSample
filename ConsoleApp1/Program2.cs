@@ -6,6 +6,12 @@ using Microsoft.Rest;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using NewsAPI;
+using NewsAPI.Models;
+using NewsAPI.Constants;
+using System.Net.Mail;
+using System.Net;
+using System.IO;
 
 namespace ConsoleApp1
 {
@@ -32,7 +38,7 @@ namespace ConsoleApp1
                 Endpoint="https://southeastasia.api.cognitive.microsoft.com"
             };
 
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            /*Console.OutputEncoding = System.Text.Encoding.UTF8;
 
             // Extracting language.
             Console.WriteLine("===== LANGUAGE EXTRACTION ======");
@@ -75,27 +81,128 @@ namespace ConsoleApp1
                     Console.WriteLine("\t\t" + keyphrase);
                 }
             }
-
+            */
+            string bodyContent = File.ReadAllText("EmailTemplate.txt");
+            string news = "";
+            string result = "";
+            string currPair = "EURUSD";
             // Extracting sentiment.
             Console.WriteLine("\n\n===== SENTIMENT ANALYSIS ======");
-
+            List<MultiLanguageInput> input = GetNews(ref news, currPair);
             SentimentBatchResult result3 = client.SentimentAsync(
                     new MultiLanguageBatchInput(
-                        new List<MultiLanguageInput>()
-                        {
-                          new MultiLanguageInput("en", "0", "I had the best day of my life."),
-                          new MultiLanguageInput("en", "1", "This was a waste of my time. The speaker put me to sleep."),
-                          new MultiLanguageInput("es", "2", "No tengo dinero ni nada que dar..."),
-                          new MultiLanguageInput("it", "3", "L'hotel veneziano era meraviglioso. È un bellissimo pezzo di architettura."),
-                        })).Result;
+                        input)).Result;
 
-
+            double? totalScore = 0;
+            int i = 0;
             // Printing sentiment results.
             foreach (var document in result3.Documents)
             {
+                
                 Console.WriteLine("Document ID: {0} , Sentiment Score: {1:0.00}", document.Id, document.Score);
+                totalScore += document.Score;
+                i++;
             }
+            double? totalPredictedScore = totalScore / i;
+            Console.WriteLine("Predicted Score: {0}", totalPredictedScore);
+            result+= "<br><br>Predicted Score:" + totalPredictedScore;
+            if (totalPredictedScore>=0.55)
+            {
+                result += "<br><br>Recommended Buy";
+                Console.WriteLine("Recommended Buy");
+            }
+            else if(totalPredictedScore <= 0.45)
+            {
+                result += "<br><br>Recommended Sell";
+                Console.WriteLine("Recommended Sell");
+            }
+            else
+            {
+                result += "<br><br>No Recommendation";
+                Console.WriteLine("No Recommendation");
+            }
+            bodyContent = bodyContent.Replace("{0}", currPair);
+            bodyContent = bodyContent.Replace("{1}", DateTime.Now.ToString());
+            bodyContent = bodyContent.Replace("{2}", news);
+            bodyContent = bodyContent.Replace("{3}", result);
+            SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
             Console.ReadLine();
         }
+        public static List<MultiLanguageInput> GetNews(ref string news,string q)
+        {
+            // init with your API key
+            var newsApiClient = new NewsApiClient("288e5576cf624fec9fed057fc290fb29");
+
+            var articlesResponse = newsApiClient.GetEverything(new EverythingRequest
+            {
+                Q =q,
+                SortBy = SortBys.Popularity,
+                Language = Languages.EN,
+                From = DateTime.Today
+            });
+            List<MultiLanguageInput> result = new List<MultiLanguageInput>();
+            news = "<table><tr><td>ID</td><td>News Title</td><td>News URL</td></tr>";
+            if (articlesResponse.Status == Statuses.Ok)
+            {
+                // total results found
+                Console.WriteLine(articlesResponse.TotalResults);
+                int i = 0;
+                // here's the first 20
+                foreach (var article in articlesResponse.Articles)
+                {
+                    // title
+                    Console.WriteLine(article.Title);
+                    news += "<tr>";
+                    // author
+                    Console.WriteLine(article.Author);
+                    // description
+                    Console.WriteLine(article.Description);
+                    // url
+                    Console.WriteLine(article.Url);
+                    // image
+                    Console.WriteLine(article.UrlToImage);
+                    // published at
+                    Console.WriteLine(article.PublishedAt);
+                    result.Add(new MultiLanguageInput("en",i.ToString(), article.Title));
+                    news += "<td>" + (i+1) + "</td>";
+                    news += "<td>" + article.Title + "</td>";
+                    news += "<td>" + article.Url + "</td>";
+                    news += "</tr>";
+                    i++;
+                }
+                news += "</table>";
+            }
+            return result;
+        }
+        public static void SendEmail(string to,string subject,string body)
+        {
+            MailMessage mail = new MailMessage();
+            mail.From = new System.Net.Mail.MailAddress("testazurecognitive@gmail.com");
+
+            // The important part -- configuring the SMTP client
+            SmtpClient smtp = new SmtpClient();
+            smtp.Port = 587;   // [1] You can try with 465 also, I always used 587 and got success
+            smtp.EnableSsl = true;
+            smtp.DeliveryMethod = SmtpDeliveryMethod.Network; // [2] Added this
+            smtp.UseDefaultCredentials = false; // [3] Changed this
+            smtp.Credentials = new NetworkCredential(mail.From.ToString(), "t3st@zur3");  // [4] Added this. Note, first parameter is NOT string.
+            smtp.Host = "smtp.gmail.com";
+
+            //recipient address
+            mail.To.Add(new MailAddress(to));
+
+            //Formatted mail body
+            mail.IsBodyHtml = true;
+            string st = "Test";
+            mail.Subject = subject;
+            mail.Body = body;
+            smtp.Send(mail);
+        }
+    }
+    class SentimentResult
+    {
+        public string URL { get; set; }
+        public string Title { get; set; }
+        public double SentimentScore { get; set; }
     }
 }
