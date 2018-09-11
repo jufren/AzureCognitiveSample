@@ -12,8 +12,8 @@ using NewsAPI.Constants;
 using System.Net.Mail;
 using System.Net;
 using System.IO;
-using AzureCognitiveTextAnalysis;
 using YahooFinanceApi;
+using BingSearchHelper;
 
 namespace ConsoleApp1
 {
@@ -30,7 +30,7 @@ namespace ConsoleApp1
                 return base.ProcessHttpRequestAsync(request, cancellationToken);
             }
         }
-        static string ss;
+        static string ss,news;
         static void Main(string[] args)
         {
             
@@ -41,58 +41,19 @@ namespace ConsoleApp1
                 Endpoint="https://southeastasia.api.cognitive.microsoft.com"
             };
 
-            /*Console.OutputEncoding = System.Text.Encoding.UTF8;
-
-            // Extracting language.
-            Console.WriteLine("===== LANGUAGE EXTRACTION ======");
-
-            var result = client.DetectLanguageAsync(new BatchInput(
-                    new List<Input>()
-                        {
-                          new Input("1", "This is a document written in English."),
-                          new Input("2", "Este es un document escrito en Español."),
-                          new Input("3", "这是一个用中文写的文件")
-                    })).Result;
-
-            // Printing language results.
-            foreach (var document in result.Documents)
-            {
-                Console.WriteLine("Document ID: {0} , Language: {1}", document.Id, document.DetectedLanguages[0].Name);
-            }
-
-            // Getting key phrases.
-            Console.WriteLine("\n\n===== KEY-PHRASE EXTRACTION ======");
-
-            KeyPhraseBatchResult result2 = client.KeyPhrasesAsync(new MultiLanguageBatchInput(
-                        new List<MultiLanguageInput>()
-                        {
-                          new MultiLanguageInput("ja", "1", "猫は幸せ"),
-                          new MultiLanguageInput("de", "2", "Fahrt nach Stuttgart und dann zum Hotel zu Fu."),
-                          new MultiLanguageInput("en", "3", "My cat is stiff as a rock."),
-                          new MultiLanguageInput("es", "4", "A mi me encanta el fútbol!")
-                        })).Result;
-
-            // Printing key phrases.
-            foreach (var document in result2.Documents)
-            {
-                Console.WriteLine("Document ID: {0} ", document.Id);
-
-                Console.WriteLine("\t Key phrases:");
-
-                foreach (string keyphrase in document.KeyPhrases)
-                {
-                    Console.WriteLine("\t\t" + keyphrase);
-                }
-            }
-            */
+            
             string bodyContent = File.ReadAllText("EmailTemplate.txt");
-            string news = "";
             string result = "";
             string currPair = "EURUSD";
             
             // Extracting sentiment.
             Console.WriteLine("\n\n===== SENTIMENT ANALYSIS ======");
-            List<MultiLanguageInput> input = GetNews(ref news,"\"" + currPair + "\"");
+            List<MultiLanguageInput> input=null;
+            Task.Run(async () =>
+            {
+                input = await GetNewsAsync(currPair );
+                // Do any async anything you need here without worry
+            }).GetAwaiter().GetResult();
             SentimentBatchResult result3 = client.SentimentAsync(
                     new MultiLanguageBatchInput(
                         input)).Result;
@@ -144,38 +105,35 @@ namespace ConsoleApp1
             bodyContent = bodyContent.Replace("{1}", DateTime.Now.ToString());
             bodyContent = bodyContent.Replace("{2}", news);
             bodyContent = bodyContent.Replace("{3}", result);
-            //SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
+            SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
             Console.ReadLine();
         }
-        public static List<MultiLanguageInput> GetNews(ref string news, string q)
+        public static async Task<List<MultiLanguageInput>> GetNewsAsync( string q)
         {
-            BingCustomSearchApiClient client = new BingCustomSearchApiClient();
-            // init with your API key
-            BingCustomSearchResponse response = client.GetNews(q);
+            BingSearchHelper.BingSearchHelper.SearchApiKey = "4c530c331b8a4b8099123cd1616afd70";
+            var newsResult = await BingSearchHelper.BingSearchHelper.GetNewsSearchResults(q, 10);
             List<MultiLanguageInput> result = new List<MultiLanguageInput>();
 
-           
-            if (response.webPages.totalEstimatedMatches>0)
+            
+            if (newsResult!=null)
             {
                 // total results found
-                Console.WriteLine(response.webPages.totalEstimatedMatches);
-                for (int i = 0; i < response.webPages.value.Length; i++)
+                //Console.WriteLine(response.webPages.totalEstimatedMatches);
+                int i = 0;
+                news = "<table><tr><td>ID</td><td>News Title</td><td>News URL</td></tr>";
+                foreach (var item in newsResult)
                 {
-                    var webPage = response.webPages.value[i];
-
-                    Console.WriteLine("name: " + webPage.name);
-                    Console.WriteLine("url: " + webPage.url);
-                    Console.WriteLine("displayUrl: " + webPage.displayUrl);
-                    Console.WriteLine("snippet: " + webPage.snippet);
-                    Console.WriteLine("dateLastCrawled: " + webPage.dateLastCrawled);
-                    Console.WriteLine();
+                    i++;
                     //System.Net.WebClient wc = new System.Net.WebClient();
                     //string webData = wc.DownloadString(webPage.url);
-                    result.Add(new MultiLanguageInput("en", i.ToString(), webPage.snippet));
+                    result.Add(new MultiLanguageInput("en", i.ToString(), item.Title));
+                    news += "<tr>";
+
                     news += "<td>" + (i + 1) + "</td>";
-                    news += "<td>" + webPage.name + "</td>";
-                    news += "<td>" + webPage.snippet + "</td>";
+                    news += "<td>" + item.Title + "</td>";
+                    news += "<td>" + item.Description + "</td>";
                     news += "</tr>";
+                    
                 }
                 news += "</table>";
                
