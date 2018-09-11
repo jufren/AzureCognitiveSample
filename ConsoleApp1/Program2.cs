@@ -12,6 +12,8 @@ using NewsAPI.Constants;
 using System.Net.Mail;
 using System.Net;
 using System.IO;
+using AzureCognitiveTextAnalysis;
+using YahooFinanceApi;
 
 namespace ConsoleApp1
 {
@@ -28,10 +30,11 @@ namespace ConsoleApp1
                 return base.ProcessHttpRequestAsync(request, cancellationToken);
             }
         }
-
+        static string ss;
         static void Main(string[] args)
         {
-
+            
+            
             // Create a client.
             ITextAnalyticsClient client = new TextAnalyticsClient(new ApiKeyServiceClientCredentials())
             {
@@ -86,9 +89,10 @@ namespace ConsoleApp1
             string news = "";
             string result = "";
             string currPair = "EURUSD";
+            
             // Extracting sentiment.
             Console.WriteLine("\n\n===== SENTIMENT ANALYSIS ======");
-            List<MultiLanguageInput> input = GetNews(ref news, currPair);
+            List<MultiLanguageInput> input = GetNews(ref news,"\"" + currPair + "\"");
             SentimentBatchResult result3 = client.SentimentAsync(
                     new MultiLanguageBatchInput(
                         input)).Result;
@@ -108,12 +112,27 @@ namespace ConsoleApp1
             result+= "<br><br>Predicted Score:" + totalPredictedScore;
             if (totalPredictedScore>=0.55)
             {
+                Task.Run(async () =>
+                {
+                    await GetEntryPriceFromYahooAsync("EURUSD=X");
+                    // Do any async anything you need here without worry
+                }).GetAwaiter().GetResult();
                 result += "<br><br>Recommended Buy";
+                result += "<br><br>Entry Price:" + ss;
+                WriteEntryPrice("Buy", ss);
                 Console.WriteLine("Recommended Buy");
             }
             else if(totalPredictedScore <= 0.45)
             {
+                Task.Run(async () =>
+                {
+                    await GetEntryPriceFromYahooAsync("EURUSD=X");
+                    // Do any async anything you need here without worry
+                }).GetAwaiter().GetResult();
                 result += "<br><br>Recommended Sell";
+
+                result += "<br><br>Entry Price:" + ss;
+                WriteEntryPrice("Sell", ss);
                 Console.WriteLine("Recommended Sell");
             }
             else
@@ -125,23 +144,75 @@ namespace ConsoleApp1
             bodyContent = bodyContent.Replace("{1}", DateTime.Now.ToString());
             bodyContent = bodyContent.Replace("{2}", news);
             bodyContent = bodyContent.Replace("{3}", result);
-            SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
+            //SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
             Console.ReadLine();
         }
-        public static List<MultiLanguageInput> GetNews(ref string news,string q)
+        public static List<MultiLanguageInput> GetNews(ref string news, string q)
+        {
+            BingCustomSearchApiClient client = new BingCustomSearchApiClient();
+            // init with your API key
+            BingCustomSearchResponse response = client.GetNews(q);
+            List<MultiLanguageInput> result = new List<MultiLanguageInput>();
+
+           
+            if (response.webPages.totalEstimatedMatches>0)
+            {
+                // total results found
+                Console.WriteLine(response.webPages.totalEstimatedMatches);
+                for (int i = 0; i < response.webPages.value.Length; i++)
+                {
+                    var webPage = response.webPages.value[i];
+
+                    Console.WriteLine("name: " + webPage.name);
+                    Console.WriteLine("url: " + webPage.url);
+                    Console.WriteLine("displayUrl: " + webPage.displayUrl);
+                    Console.WriteLine("snippet: " + webPage.snippet);
+                    Console.WriteLine("dateLastCrawled: " + webPage.dateLastCrawled);
+                    Console.WriteLine();
+                    //System.Net.WebClient wc = new System.Net.WebClient();
+                    //string webData = wc.DownloadString(webPage.url);
+                    result.Add(new MultiLanguageInput("en", i.ToString(), webPage.snippet));
+                    news += "<td>" + (i + 1) + "</td>";
+                    news += "<td>" + webPage.name + "</td>";
+                    news += "<td>" + webPage.snippet + "</td>";
+                    news += "</tr>";
+                }
+                news += "</table>";
+               
+            }
+            return result;
+        }
+        public static async Task<string> GetEntryPriceFromYahooAsync(string curr)
+        {
+            // You could query multiple symbols with multiple fields through the following steps:
+            var securities = await Yahoo.Symbols(curr).Fields(Field.Currency, Field.RegularMarketPrice).QueryAsync();
+            var aapl = securities[curr.ToUpper()].RegularMarketPrice;
+            //var price = aapl.Values[Field.RegularMarketPrice];
+            ss = aapl.ToString();
+            return ss;
+        }
+        public static void WriteEntryPrice(string type, string price)
+        {
+            File.WriteAllText("price.txt", type + "," + price);
+        }
+        
+            public static List<MultiLanguageInput> GetNewsNewsApi(ref string news,string q)
         {
             // init with your API key
             var newsApiClient = new NewsApiClient("288e5576cf624fec9fed057fc290fb29");
 
-            var articlesResponse = newsApiClient.GetEverything(new EverythingRequest
+            
+             var articlesResponse = newsApiClient.GetEverything(new EverythingRequest
             {
                 Q =q,
+                
                 SortBy = SortBys.Popularity,
                 Language = Languages.EN,
-                From = DateTime.Today
+                From = DateTime.Today.AddDays(0)
             });
             List<MultiLanguageInput> result = new List<MultiLanguageInput>();
             news = "<table><tr><td>ID</td><td>News Title</td><td>News URL</td></tr>";
+            string[] strToReplace = new string[]{ "USD/JPY", "USD-JPY" };
             if (articlesResponse.Status == Statuses.Ok)
             {
                 // total results found
@@ -163,7 +234,13 @@ namespace ConsoleApp1
                     Console.WriteLine(article.UrlToImage);
                     // published at
                     Console.WriteLine(article.PublishedAt);
-                    result.Add(new MultiLanguageInput("en",i.ToString(), article.Title));
+
+                    string articleStr = "";
+                    foreach (string str in strToReplace)
+                    {
+                        articleStr=CleanUpTitle(article.Description, str, q);
+                    }
+                    result.Add(new MultiLanguageInput("en",i.ToString(), articleStr));
                     news += "<td>" + (i+1) + "</td>";
                     news += "<td>" + article.Title + "</td>";
                     news += "<td>" + article.Url + "</td>";
@@ -173,6 +250,11 @@ namespace ConsoleApp1
                 news += "</table>";
             }
             return result;
+        }
+        public static string CleanUpTitle(string src, string toreplace,string replacewith)
+        {
+            return src.Replace(toreplace, replacewith);
+            
         }
         public static void SendEmail(string to,string subject,string body)
         {
