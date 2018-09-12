@@ -14,6 +14,7 @@ using System.Net;
 using System.IO;
 using YahooFinanceApi;
 using BingSearchHelper;
+using System.Globalization;
 
 namespace ConsoleApp1
 {
@@ -44,14 +45,14 @@ namespace ConsoleApp1
             
             string bodyContent = File.ReadAllText("EmailTemplate.txt");
             string result = "";
-            string currPair = "EURUSD";
+            string currPair = "ethereum price";
             
             // Extracting sentiment.
             Console.WriteLine("\n\n===== SENTIMENT ANALYSIS ======");
             List<MultiLanguageInput> input=null;
             Task.Run(async () =>
             {
-                input = await GetNewsAsync(currPair );
+                input = await GetNewsAsync("\"" + currPair + "\"");
                 // Do any async anything you need here without worry
             }).GetAwaiter().GetResult();
             SentimentBatchResult result3 = client.SentimentAsync(
@@ -75,7 +76,7 @@ namespace ConsoleApp1
             {
                 Task.Run(async () =>
                 {
-                    await GetEntryPriceFromYahooAsync("EURUSD=X");
+                    await GetEntryPriceFromYahooAsync("ETHUSD=X");
                     // Do any async anything you need here without worry
                 }).GetAwaiter().GetResult();
                 result += "<br><br>Recommended Buy";
@@ -87,13 +88,14 @@ namespace ConsoleApp1
             {
                 Task.Run(async () =>
                 {
-                    await GetEntryPriceFromYahooAsync("EURUSD=X");
+                    await GetEntryPriceFromYahooAsync("ETHUSD=X");
                     // Do any async anything you need here without worry
                 }).GetAwaiter().GetResult();
                 result += "<br><br>Recommended Sell";
 
                 result += "<br><br>Entry Price:" + ss;
                 WriteEntryPrice("Sell", ss);
+
                 Console.WriteLine("Recommended Sell");
             }
             else
@@ -105,7 +107,7 @@ namespace ConsoleApp1
             bodyContent = bodyContent.Replace("{1}", DateTime.Now.ToString());
             bodyContent = bodyContent.Replace("{2}", news);
             bodyContent = bodyContent.Replace("{3}", result);
-            SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
+            //SendEmail("jufren@gmail.com", currPair + " Recommendation for "+ DateTime.Now.ToString(), bodyContent);
             Console.ReadLine();
         }
         public static async Task<List<MultiLanguageInput>> GetNewsAsync( string q)
@@ -123,16 +125,23 @@ namespace ConsoleApp1
                 news = "<table><tr><td>ID</td><td>News Title</td><td>News URL</td></tr>";
                 foreach (var item in newsResult)
                 {
-                    i++;
+                    
                     //System.Net.WebClient wc = new System.Net.WebClient();
                     //string webData = wc.DownloadString(webPage.url);
-                    result.Add(new MultiLanguageInput("en", i.ToString(), item.Title));
-                    news += "<tr>";
-
-                    news += "<td>" + (i + 1) + "</td>";
-                    news += "<td>" + item.Title + "</td>";
-                    news += "<td>" + item.Description + "</td>";
-                    news += "</tr>";
+                   
+                    DateTime nowMin4Hour = DateTime.Now.AddHours(-12);
+                    DateTime publishedDate = DateTime.ParseExact(item.DatePublished, "MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+                    if (publishedDate.CompareTo(nowMin4Hour)>0)
+                    {
+                        
+                        i++;
+                        result.Add(new MultiLanguageInput("en", i.ToString(), item.Description));
+                        news += "<tr>";
+                        news += "<td>" + (i + 1) + "</td>";
+                        news += "<td>" + item.Title + "</td>";
+                        news += "<td>" + item.Description + "</td>";
+                        news += "</tr>";
+                    }
                     
                 }
                 news += "</table>";
@@ -233,7 +242,6 @@ namespace ConsoleApp1
 
             //Formatted mail body
             mail.IsBodyHtml = true;
-            string st = "Test";
             mail.Subject = subject;
             mail.Body = body;
             smtp.Send(mail);

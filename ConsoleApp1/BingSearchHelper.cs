@@ -147,7 +147,7 @@ namespace BingSearchHelper
             {
                 List<NewsArticle> articles = new List<NewsArticle>();
 
-                var result = await searchClient.GetAsync(string.Format("{0}/?q={1}&count={2}&offset={3}&mkt={4}&sortBy=Date", NewsSearchEndPoint, WebUtility.UrlEncode(query), count, offset, market));
+                var result = await searchClient.GetAsync(string.Format("{0}/?q={1}&count={2}&offset={3}&mkt={4}&sortBy=Date&freshness=Day", NewsSearchEndPoint, WebUtility.UrlEncode(query), count, offset, market));
                 result.EnsureSuccessStatusCode();
                 var json = await result.Content.ReadAsStringAsync();
                 dynamic data = JObject.Parse(json);
@@ -162,9 +162,9 @@ namespace BingSearchHelper
                             Url = data.value[i].url,
                             Description = data.value[i].description,
                             ThumbnailUrl = data.value[i].image?.thumbnail?.contentUrl,
-                            Provider = data.value[i].provider?[0].name
-                            
-                            
+                            Provider = data.value[i].provider?[0].name,
+                            DatePublished = data.value[i].datePublished
+
                         });
                     }
                 }
@@ -187,5 +187,6 @@ namespace BingSearchHelper
         public string Url { get; set; }
         public string ThumbnailUrl { get; set; }
         public string Provider { get; set; }
+        public string DatePublished { get; set; }
     }
 }
